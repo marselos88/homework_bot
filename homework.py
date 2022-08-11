@@ -13,10 +13,13 @@ from exeptions import (ApiRequestException, NoValidAnswerException,
 
 load_dotenv()
 
+LOG_FORMAT = (
+    '%(asctime)s, %(levelname)s, %(funcName)s,'
+    '%(lineno)s, %(message)s, %(name)s'
+)
 logging.basicConfig(
     level=logging.DEBUG,
-    format=(f'%(asctime)s, %(levelname)s, %(funcName)s, '
-            f'%(lineno)s, %(message)s, %(name)s')
+    format=LOG_FORMAT
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
