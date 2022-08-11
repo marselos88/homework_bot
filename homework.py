@@ -15,7 +15,8 @@ load_dotenv()
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s, %(levelname)s, %(funcName)s, %(lineno)s, %(message)s, %(name)s'
+    format=(f'%(asctime)s, %(levelname)s, %(funcName)s, '
+            f'%(lineno)s, %(message)s, %(name)s')
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
