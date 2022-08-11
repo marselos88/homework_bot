@@ -1,31 +1,37 @@
+import http
+import logging
 import os
+import time
 from sys import stdout
+
 import requests
 from dotenv import load_dotenv
-import time
 from telegram import Bot
-import logging
-import http
 
+from exeptions import (ApiRequestException, NoValidAnswerException,
+                       NoValidTokensException, SendMessageError)
 
 load_dotenv()
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
+    format='%(asctime)s, %(levelname)s, %(funcName)s, %(lineno)s, %(message)s, %(name)s'
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=stdout)
 logger.addHandler(handler)
 
+if __name__ == '__logging__':
+    logging()
+
+
 URL = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-RETRY_TIME = 600
+RETRY_TIME = 60
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
 
 HOMEWORK_STATUSES = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
@@ -33,43 +39,23 @@ HOMEWORK_STATUSES = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
-HOMEWORK_TEMPLATE = {
-    "id": 124,
-    "status": "rejected",
-    "homework_name": "username__hw_python_oop.zip",
-    "reviewer_comment": "Код не по PEP8, нужно исправить",
-    "date_updated": "2020-02-13T16:42:47Z",
-    "lesson_name": "Итоговый проект"
-}
-
-HOMEWORK_DB = {}
-
-
-class NoValidAnswerException(Exception):
-    """Обработка исключений некорректного ответа."""
-
-    pass
-
-
-class ApiRequestException(Exception):
-    """Обработка исключений ответа API."""
-
-    pass
-
 
 def send_message(bot, message):
     """Отправить сообщение."""
     chat_id = TELEGRAM_CHAT_ID
-    bot.send_message(chat_id, message)
+    logging.info('Отправка сообщения')
+    try:
+        bot.send_message(chat_id, message)
+    except SendMessageError:
+        logging.ERROR('Бот не смог отправить сообщение')
 
 
 def get_api_answer(current_timestamp=None):
     """Обратиться к API practicum."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-    headers = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
     try:
-        request = requests.get(URL, headers=headers, params=params)
+        request = requests.get(URL, headers=HEADERS, params=params)
     except Exception as e:
         raise ApiRequestException(e)
     if request.status_code != http.HTTPStatus.OK:
@@ -79,54 +65,82 @@ def get_api_answer(current_timestamp=None):
 
 def check_response(response):
     """Проверка ответа от API."""
-    if not type(response['homeworks']) == list:
+    if not isinstance(response, dict):
+        raise NoValidAnswerException(
+            'Полученные данные не соотвествуют ожидаемым'
+        )
+    if 'current_date' not in response:
+        raise NoValidAnswerException(
+            'В ответе отсутствует временная метка'
+        )
+    if 'homeworks' not in response:
         raise NoValidAnswerException('В ответе отсутствует список работ')
+    if not type(response['homeworks']) == list:
+        raise NoValidAnswerException(
+            'Cписок работ не соответсвует ожидаемому типу'
+        )
     return response['homeworks']
 
 
 def parse_status(homework):
     """Проверить сменился ли статус работы."""
-    if homework["id"] in HOMEWORK_DB:
-        old_status = HOMEWORK_DB["id"]
-    else:
-        old_status = None
-    current_status = homework["status"]
-    if old_status != current_status:
-        HOMEWORK_DB["status"] = current_status
-        homework_name = homework["homework_name"]
-        verdict = HOMEWORK_STATUSES.get(current_status)
+    homework_status_old = ''
+    if len(homework) and homework_status_old != homework[0]['status']:
+        homework_status_new = homework[0]['status']
+        homework_status_old = homework_status_new
+        verdict = HOMEWORK_STATUSES.get(homework_status_new)
         message = (f'Изменился статус проверки работы'
-                   f' "{homework_name}". {verdict}')
+                   f' "{homework_status_new}". {verdict}'
+                   )
     else:
         message = ''
-    return message
+    return(message)
 
 
 def check_tokens() -> bool:
     """Проверить наличие токенов."""
+    if not len(PRACTICUM_TOKEN) == 39:
+        raise NoValidTokensException('Не корректный токен к practicum api')
+    if not len(TELEGRAM_TOKEN) == 46:
+        raise NoValidTokensException('Не корректный токен к telegram api')
+    if not len(TELEGRAM_CHAT_ID) == 9:
+        raise NoValidTokensException('Не корректный chat_id')
     return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def main():
     """Основная логика работы бота."""
-    prev_timestamp = int(time.time()) - RETRY_TIME
+    prev_timestamp = int(time.time())
     bot = Bot(token=TELEGRAM_TOKEN)
     while True:
         try:
+            logging.info('Проверка токенов')
+            check_tokens()
+            logging.info('Токены корректны')
+            logging.info('GET запрос к API')
             practicum_response = get_api_answer(prev_timestamp)
-            print(practicum_response)
+            logging.info('Ответ получен')
+            logging.info('Проверка ответа от API')
             homework_list = check_response(practicum_response)
+            logging.info(f'Ответа API корректен, '
+                         f'колчество работ в ответе: {len(homework_list)}')
             prev_timestamp = practicum_response["current_date"]
-            for homework in homework_list:
-                message = parse_status(homework)
-                if message:
-                    send_message(bot, message)
+            logging.info('Получаю статус работы')
+            parse_status(homework_list)
+            logging.info('Статус работы получен')
+            message = parse_status(homework_list)
+            if len(message) != 0:
+                logging.info('Статус работы изменился')
+                send_message(bot, message)
+                logging.info('Сообщение отправлено')
+            else:
+                logging.info('Статус работы не изменился')
             time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
+        finally:
             time.sleep(RETRY_TIME)
-            continue
 
 
 if __name__ == '__main__':
