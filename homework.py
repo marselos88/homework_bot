@@ -69,16 +69,6 @@ def get_api_answer(current_timestamp=None):
 
 def check_response(response):
     """Проверка ответа от API."""
-    if not isinstance(response, dict):
-        raise NoValidAnswerException(
-            'Полученные данные не соотвествуют ожидаемым'
-        )
-    if 'current_date' not in response:
-        raise NoValidAnswerException(
-            'В ответе отсутствует временная метка'
-        )
-    if 'homeworks' not in response:
-        raise NoValidAnswerException('В ответе отсутствует список работ')
     if not type(response['homeworks']) == list:
         raise NoValidAnswerException(
             'Cписок работ не соответсвует ожидаемому типу'
@@ -103,12 +93,6 @@ def parse_status(homework):
 
 def check_tokens() -> bool:
     """Проверить наличие токенов."""
-    if not len(PRACTICUM_TOKEN) == 39:
-        raise NoValidTokensException('Не корректный токен к practicum api')
-    if not len(TELEGRAM_TOKEN) == 46:
-        raise NoValidTokensException('Не корректный токен к telegram api')
-    if not len(TELEGRAM_CHAT_ID) == 9:
-        raise NoValidTokensException('Не корректный chat_id')
     return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
