@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from telegram import Bot
 
 from exeptions import (ApiRequestException, NoValidAnswerException,
-                       NoValidTokensException, SendMessageError)
+                       SendMessageError)
 
 load_dotenv()
 
