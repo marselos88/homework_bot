@@ -79,8 +79,11 @@ def check_response(response):
 def parse_status(homework):
     """Проверить сменился ли статус работы."""
     if homework['status']:
-        homework_status = homework['status']
-        homework_name = homework['homework_name']
+        try:
+            homework_status = homework['status']
+            homework_name = homework['homework_name']
+        except KeyError:
+            raise KeyError("В ответе отсутствуют нужные ключи")
         try:
             verdict = HOMEWORK_STATUSES[homework_status]
         except KeyError:
