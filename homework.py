@@ -78,13 +78,15 @@ def check_response(response):
 
 def parse_status(homework):
     """Проверить сменился ли статус работы."""
-    homework_status_old = ''
-    if len(homework) and homework_status_old != homework[0]['status']:
-        homework_status_new = homework[0]['status']
-        homework_status_old = homework_status_new
-        verdict = HOMEWORK_STATUSES.get(homework_status_new)
+    if homework['status']:
+        homework_status = homework['status']
+        homework_name = homework['homework_name']
+        try:
+            verdict = HOMEWORK_STATUSES[homework_status]
+        except KeyError:
+            raise KeyError("Некорректный статус работы")
         message = (f'Изменился статус проверки работы'
-                   f' "{homework_status_new}". {verdict}'
+                   f' "{homework_name}". {verdict}'
                    )
     else:
         message = ''
@@ -114,9 +116,12 @@ def main():
                          f'колчество работ в ответе: {len(homework_list)}')
             prev_timestamp = practicum_response["current_date"]
             logging.info('Получаю статус работы')
-            parse_status(homework_list)
-            logging.info('Статус работы получен')
-            message = parse_status(homework_list)
+            if not len(homework_list):
+                logging.info('Нет работ с новыми статусами')
+                time.sleep(RETRY_TIME)
+                continue
+            logging.info('Есть работы с новыми статусами')
+            message = parse_status(homework_list[0])
             if len(message) != 0:
                 logging.info('Статус работы изменился')
                 send_message(bot, message)
