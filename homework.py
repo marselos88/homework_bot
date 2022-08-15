@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from telegram import Bot
 
 from exeptions import (ApiRequestException, NoValidAnswerException,
-                       SendMessageError)
+                       NoValidTokensException, SendMessageError)
 
 load_dotenv()
 
@@ -26,15 +26,12 @@ logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=stdout)
 logger.addHandler(handler)
 
-if __name__ == '__logging__':
-    logging()
-
 
 URL = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-RETRY_TIME = 60
+RETRY_TIME = 600
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
 HOMEWORK_STATUSES = {
@@ -48,10 +45,8 @@ def send_message(bot, message):
     """Отправить сообщение."""
     chat_id = TELEGRAM_CHAT_ID
     logging.info('Отправка сообщения')
-    try:
-        bot.send_message(chat_id, message)
-    except SendMessageError:
-        logging.ERROR('Бот не смог отправить сообщение')
+    if not bot.send_message(chat_id, message):
+        raise SendMessageError('Бот не смог отправить сообщение')
 
 
 def get_api_answer(current_timestamp=None):
@@ -69,35 +64,43 @@ def get_api_answer(current_timestamp=None):
 
 def check_response(response):
     """Проверка ответа от API."""
-    if not type(response['homeworks']) == list:
+    if not isinstance(response, dict):
         raise NoValidAnswerException(
             'Cписок работ не соответсвует ожидаемому типу'
         )
+    if 'current_date' not in response:
+        raise NoValidAnswerException('В ответе отсутствует метка времени')
+    if 'homeworks' not in response:
+        raise NoValidAnswerException('В ответе отсутствует список работ')
     return response['homeworks']
 
 
 def parse_status(homework):
     """Проверить сменился ли статус работы."""
-    if homework['status']:
-        try:
-            homework_status = homework['status']
-            homework_name = homework['homework_name']
-        except KeyError:
-            raise KeyError("В ответе отсутствуют нужные ключи")
-        try:
-            verdict = HOMEWORK_STATUSES[homework_status]
-        except KeyError:
-            raise KeyError("Некорректный статус работы")
-        message = (f'Изменился статус проверки работы'
-                   f' "{homework_name}". {verdict}'
-                   )
-    else:
-        message = ''
+    if not homework['status']:
+        raise KeyError('Отсутствует ключ "status"')
+    if not homework['homework_name']:
+        raise KeyError('Отсутствует ключ "homework_name"')
+    homework_status = homework['status']
+    homework_name = homework['homework_name']
+    try:
+        verdict = HOMEWORK_STATUSES[homework_status]
+    except KeyError:
+        raise KeyError('Некорректный статус работы')
+    message = (f'Изменился статус проверки работы'
+               f' "{homework_name}". {verdict}'
+               )
     return(message)
 
 
 def check_tokens() -> bool:
     """Проверить наличие токенов."""
+    if not len(PRACTICUM_TOKEN) == 39:
+        raise NoValidTokensException('Не корректный токен к practicum api')
+    if not len(TELEGRAM_TOKEN) == 46:
+        raise NoValidTokensException('Не корректный токен к telegram api')
+    if not len(TELEGRAM_CHAT_ID) == 9:
+        raise NoValidTokensException('Не корректный chat_id')
     return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
@@ -124,14 +127,15 @@ def main():
                 time.sleep(RETRY_TIME)
                 continue
             logging.info('Есть работы с новыми статусами')
+            prev_status = ''
             message = parse_status(homework_list[0])
-            if len(message) != 0:
+            if prev_status != message:
                 logging.info('Статус работы изменился')
                 send_message(bot, message)
                 logging.info('Сообщение отправлено')
             else:
+                prev_status = message
                 logging.info('Статус работы не изменился')
-            time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
@@ -141,3 +145,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+if __name__ == '__logging__':
+    logging()
