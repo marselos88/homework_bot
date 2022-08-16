@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from telegram import Bot
 
 from exeptions import (ApiRequestException, NoValidAnswerException,
-                       NoValidTokensException, SendMessageError)
+                       SendMessageError)
 
 load_dotenv()
 
@@ -65,7 +65,11 @@ def get_api_answer(current_timestamp=None):
 def check_response(response):
     """Проверка ответа от API."""
     if not isinstance(response, dict):
-        raise NoValidAnswerException(
+        raise TypeError(
+            'В ответе не словарь'
+        )
+    if not isinstance(response['homeworks'], list):
+        raise TypeError(
             'Cписок работ не соответсвует ожидаемому типу'
         )
     if 'current_date' not in response:
@@ -95,13 +99,8 @@ def parse_status(homework):
 
 def check_tokens() -> bool:
     """Проверить наличие токенов."""
-    if not len(PRACTICUM_TOKEN) == 39:
-        raise NoValidTokensException('Не корректный токен к practicum api')
-    if not len(TELEGRAM_TOKEN) == 46:
-        raise NoValidTokensException('Не корректный токен к telegram api')
-    if not len(TELEGRAM_CHAT_ID) == 9:
-        raise NoValidTokensException('Не корректный chat_id')
-    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
+    if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        return True
 
 
 def main():
