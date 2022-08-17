@@ -45,8 +45,10 @@ def send_message(bot, message):
     """Отправить сообщение."""
     chat_id = TELEGRAM_CHAT_ID
     logging.info('Отправка сообщения')
-    if not bot.send_message(chat_id, message):
-        raise SendMessageError('Бот не смог отправить сообщение')
+    try:
+        bot.send_message(chat_id, message)
+    except Exception as e:
+        raise SendMessageError(e)
 
 
 def get_api_answer(current_timestamp=None):
@@ -94,23 +96,29 @@ def parse_status(homework):
     message = (f'Изменился статус проверки работы'
                f' "{homework_name}". {verdict}'
                )
-    return(message)
+    return message
 
 
 def check_tokens() -> bool:
     """Проверить наличие токенов."""
-    if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        return True
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def main():
     """Основная логика работы бота."""
-    prev_timestamp = int(time.time())
     bot = Bot(token=TELEGRAM_TOKEN)
+    try:
+        check_tokens()
+    except Exception as error:
+        message = f'Сбой в работе программы: {error}'
+        send_message(bot, message)
+    prev_timestamp = int(time.time())
+
+    prev_status = ''
+    prev_error_message = ''
     while True:
         try:
             logging.info('Проверка токенов')
-            check_tokens()
             logging.info('Токены корректны')
             logging.info('GET запрос к API')
             practicum_response = get_api_answer(prev_timestamp)
@@ -119,14 +127,12 @@ def main():
             homework_list = check_response(practicum_response)
             logging.info(f'Ответа API корректен, '
                          f'колчество работ в ответе: {len(homework_list)}')
-            prev_timestamp = practicum_response["current_date"]
+            prev_timestamp = practicum_response.get("current_date")
             logging.info('Получаю статус работы')
-            if not len(homework_list):
+            if not homework_list:
                 logging.info('Нет работ с новыми статусами')
-                time.sleep(RETRY_TIME)
                 continue
             logging.info('Есть работы с новыми статусами')
-            prev_status = ''
             message = parse_status(homework_list[0])
             if prev_status != message:
                 logging.info('Статус работы изменился')
@@ -137,13 +143,12 @@ def main():
                 logging.info('Статус работы не изменился')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            send_message(bot, message)
+            if message != prev_error_message:
+                send_message(bot, message)
+                prev_error_message = message
         finally:
             time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
     main()
-
-if __name__ == '__logging__':
-    logging()
